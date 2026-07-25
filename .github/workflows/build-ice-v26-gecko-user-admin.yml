@@ -1,0 +1,56 @@
+name: Build ICE v26 Gecko User dan Admin
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-user:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK 35
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.7' }
+      - name: Extract dan build User Gecko
+        run: |
+          unzip -q ice_v26_gecko_user_source.zip -d user-source
+          cd user-source
+          chmod +x build_user.sh
+          ./build_user.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ICE-v26-Gecko-User-APK
+          path: user-source/ice_v26_gecko_user.apk
+          if-no-files-found: error
+  build-admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK 35
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.7' }
+      - name: Extract dan build Admin Gecko
+        run: |
+          unzip -q ice_v26_gecko_admin_source.zip -d admin-source
+          cd admin-source
+          chmod +x build_admin.sh
+          ./build_admin.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ICE404-v26-Gecko-Admin-APK
+          path: admin-source/ice_v26_gecko_admin.apk
+          if-no-files-found: error
