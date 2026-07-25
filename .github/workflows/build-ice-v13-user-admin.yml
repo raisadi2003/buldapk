@@ -1,0 +1,133 @@
+name: Build ICE v13 User dan Admin
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-user:
+    name: Build ICE User v13
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ambil repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Extract source User v13
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP="ice_v2891_user_v13_polished_find_menu_round_bubble.zip"
+
+          if [ ! -f "$ZIP" ]; then
+            echo "::error::File $ZIP tidak ditemukan di root repository."
+            exit 1
+          fi
+
+          rm -rf user-source
+          mkdir -p user-source
+          unzip -q "$ZIP" -d user-source
+
+          if [ ! -f "user-source/build_user.sh" ]; then
+            echo "::error::build_user.sh tidak ditemukan setelah ZIP diekstrak."
+            exit 1
+          fi
+
+      - name: Build dan sign APK User
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd user-source
+          chmod +x build_user.sh
+          ./build_user.sh
+
+          APK_FILE="$(find . -maxdepth 1 -type f -name 'ice_v*_user.apk' | head -n 1)"
+          if [ -z "$APK_FILE" ]; then
+            echo "::error::APK User hasil build tidak ditemukan."
+            exit 1
+          fi
+
+          mkdir -p "$GITHUB_WORKSPACE/output-user"
+          cp "$APK_FILE" "$GITHUB_WORKSPACE/output-user/ICE-v13-User.apk"
+
+      - name: Upload APK User
+        uses: actions/upload-artifact@v4
+        with:
+          name: ICE-v13-User-APK
+          path: output-user/ICE-v13-User.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  build-admin:
+    name: Build ICE 404 Admin v13
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ambil repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Extract source Admin v13
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP="ice_v2891_admin_v13_polished_find_menu_round_bubble.zip"
+
+          if [ ! -f "$ZIP" ]; then
+            echo "::error::File $ZIP tidak ditemukan di root repository."
+            exit 1
+          fi
+
+          rm -rf admin-source
+          mkdir -p admin-source
+          unzip -q "$ZIP" -d admin-source
+
+          if [ ! -f "admin-source/build_admin.sh" ]; then
+            echo "::error::build_admin.sh tidak ditemukan setelah ZIP diekstrak."
+            exit 1
+          fi
+
+      - name: Build dan sign APK Admin
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd admin-source
+          chmod +x build_admin.sh
+          ./build_admin.sh
+
+          APK_FILE="$(find . -maxdepth 1 -type f -name 'ice_v*_admin.apk' | head -n 1)"
+          if [ -z "$APK_FILE" ]; then
+            echo "::error::APK Admin hasil build tidak ditemukan."
+            exit 1
+          fi
+
+          mkdir -p "$GITHUB_WORKSPACE/output-admin"
+          cp "$APK_FILE" "$GITHUB_WORKSPACE/output-admin/ICE404-v13-Admin.apk"
+
+      - name: Upload APK Admin
+        uses: actions/upload-artifact@v4
+        with:
+          name: ICE404-v13-Admin-APK
+          path: output-admin/ICE404-v13-Admin.apk
+          if-no-files-found: error
+          retention-days: 30
