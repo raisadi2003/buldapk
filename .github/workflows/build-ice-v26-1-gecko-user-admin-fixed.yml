@@ -1,0 +1,78 @@
+name: Build ICE v26.1 Gecko User dan Admin
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-user:
+    name: Build User Gecko
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Extract dan build User Gecko
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q ice_v26_1_gecko_user_source_fixed.zip -d user-source
+          cd user-source
+          chmod +x build_user.sh
+          ./build_user.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ICE-v26.1-Gecko-User-APK
+          path: user-source/ice_v26_1_gecko_user.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  build-admin:
+    name: Build Admin Gecko
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Extract dan build Admin Gecko
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q ice_v26_1_gecko_admin_source_fixed.zip -d admin-source
+          cd admin-source
+          chmod +x build_admin.sh
+          ./build_admin.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ICE404-v26.1-Gecko-Admin-APK
+          path: admin-source/ice_v26_1_gecko_admin.apk
+          if-no-files-found: error
+          retention-days: 14
