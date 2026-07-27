@@ -1,0 +1,130 @@
+name: Build ICE Admin and User v26
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "ice_v2891_admin_v26_https_toggle.zip"
+      - "ice_v2891_user_v26_https_toggle.zip"
+      - ".github/workflows/build_ice_admin_user_v26_v2.yml"
+
+jobs:
+  build-admin-user:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify source ZIP files
+        shell: bash
+        run: |
+          set -e
+          test -f ice_v2891_admin_v26_https_toggle.zip || {
+            echo "ZIP Admin tidak ditemukan"
+            exit 1
+          }
+          test -f ice_v2891_user_v26_https_toggle.zip || {
+            echo "ZIP User tidak ditemukan"
+            exit 1
+          }
+
+      - name: Extract Admin and User sources
+        shell: bash
+        run: |
+          set -e
+          rm -rf build-admin build-user
+          mkdir -p build-admin build-user
+          unzip -q ice_v2891_admin_v26_https_toggle.zip -d build-admin
+          unzip -q ice_v2891_user_v26_https_toggle.zip -d build-user
+
+          ADMIN_ROOT="$(find build-admin -type f -name gradlew -printf '%h\n' | head -n 1)"
+          USER_ROOT="$(find build-user -type f -name gradlew -printf '%h\n' | head -n 1)"
+
+          if [ -z "$ADMIN_ROOT" ]; then
+            echo "gradlew tidak ditemukan di source Admin"
+            exit 1
+          fi
+
+          if [ -z "$USER_ROOT" ]; then
+            echo "gradlew tidak ditemukan di source User"
+            exit 1
+          fi
+
+          echo "ADMIN_ROOT=$ADMIN_ROOT" >> "$GITHUB_ENV"
+          echo "USER_ROOT=$USER_ROOT" >> "$GITHUB_ENV"
+
+          chmod +x "$ADMIN_ROOT/gradlew"
+          chmod +x "$USER_ROOT/gradlew"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Admin APK
+        shell: bash
+        run: |
+          set -e
+          cd "$ADMIN_ROOT"
+          ./gradlew clean assembleDebug --stacktrace --no-daemon
+
+      - name: Collect Admin APK
+        shell: bash
+        run: |
+          set -e
+          mkdir -p output/admin
+
+          ADMIN_APK="$(find "$ADMIN_ROOT" -type f -path "*/build/outputs/apk/debug/*.apk" | head -n 1)"
+          if [ -z "$ADMIN_APK" ]; then
+            echo "APK Admin tidak ditemukan setelah build"
+            exit 1
+          fi
+
+          cp "$ADMIN_APK" output/admin/ICE_Admin_v26.apk
+
+      - name: Build User APK
+        shell: bash
+        run: |
+          set -e
+          cd "$USER_ROOT"
+          ./gradlew clean assembleDebug --stacktrace --no-daemon
+
+      - name: Collect User APK
+        shell: bash
+        run: |
+          set -e
+          mkdir -p output/user
+
+          USER_APK="$(find "$USER_ROOT" -type f -path "*/build/outputs/apk/debug/*.apk" | head -n 1)"
+          if [ -z "$USER_APK" ]; then
+            echo "APK User tidak ditemukan setelah build"
+            exit 1
+          fi
+
+          cp "$USER_APK" output/user/ICE_User_v26.apk
+
+      - name: Upload Admin APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ICE-Admin-v26
+          path: output/admin/ICE_Admin_v26.apk
+          if-no-files-found: error
+
+      - name: Upload User APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ICE-User-v26
+          path: output/user/ICE_User_v26.apk
+          if-no-files-found: error
+
+      - name: Upload Admin and User APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ICE-Admin-and-User-v26
+          path: output
+          if-no-files-found: error
