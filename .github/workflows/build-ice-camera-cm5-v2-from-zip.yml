@@ -1,0 +1,81 @@
+name: Build ICE Camera CM5 v2 from ZIP
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main", "master"]
+    paths:
+      - "ICE_Camera_CM5_v2_fixed.zip"
+      - ".github/workflows/build-ice-camera-cm5-v2-from-zip.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: yes | sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Extract source ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP_FILE="ICE_Camera_CM5_v2_fixed.zip"
+          test -f "$ZIP_FILE" || { echo "File $ZIP_FILE tidak ditemukan di halaman utama repository."; exit 1; }
+          rm -rf extracted_source
+          mkdir extracted_source
+          unzip -q "$ZIP_FILE" -d extracted_source
+          PROJECT_DIR="$(find extracted_source -type f -name settings.gradle.kts -printf '%h\n' | head -n 1)"
+          test -n "$PROJECT_DIR" || { echo "Project Gradle tidak ditemukan di ZIP."; exit 1; }
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project: $PROJECT_DIR"
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -o pipefail
+          cd "$PROJECT_DIR"
+          gradle --no-daemon :app:assembleDebug --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/build-log.txt"
+
+      - name: Collect APK
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p apk-output
+          find "$PROJECT_DIR/app/build/outputs/apk/debug" -type f -name '*.apk' -exec cp {} apk-output/ICE-Camera-CM5-v2-debug.apk \;
+          test -f apk-output/ICE-Camera-CM5-v2-debug.apk
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ICE-Camera-CM5-v2-APK
+          path: apk-output/ICE-Camera-CM5-v2-debug.apk
+          if-no-files-found: error
+
+      - name: Upload build log when failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ICE-Camera-CM5-build-log
+          path: build-log.txt
+          if-no-files-found: ignore
