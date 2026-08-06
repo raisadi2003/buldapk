@@ -1,0 +1,118 @@
+version: 2.1
+
+jobs:
+  build-ice-admin-user:
+    docker:
+      - image: cimg/android:2024.11.1
+    resource_class: medium
+    environment:
+      GRADLE_USER_HOME: /home/circleci/.gradle
+    steps:
+      - checkout
+
+      - run:
+          name: Siapkan Gradle 8.7
+          command: |
+            set -euo pipefail
+            sudo apt-get update
+            sudo apt-get install -y unzip curl
+            if [[ ! -x "$HOME/gradle-8.7/bin/gradle" ]]; then
+              curl -fsSL https://services.gradle.org/distributions/gradle-8.7-bin.zip -o /tmp/gradle-8.7-bin.zip
+              unzip -q /tmp/gradle-8.7-bin.zip -d "$HOME"
+            fi
+            echo 'export PATH="$HOME/gradle-8.7/bin:$PATH"' >> "$BASH_ENV"
+            source "$BASH_ENV"
+            java -version
+            gradle --version
+            echo "ANDROID_HOME=${ANDROID_HOME:-}"
+            echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-}"
+
+      - restore_cache:
+          keys:
+            - ice-gradle-v31-2-1-{{ arch }}-
+
+      - run:
+          name: Build ICE Admin dan User
+          command: |
+            set -euo pipefail
+            source "$BASH_ENV"
+
+            mkdir -p /tmp/ice-artifacts
+
+            build_variant() {
+              local variant="$1"
+              local pattern="$2"
+              local script="$3"
+              local workdir="/tmp/ice-${variant}"
+
+              local zip_file
+              zip_file="$(find . -maxdepth 1 -type f -iname "$pattern" -printf '%f\n' | sort -V | tail -n 1)"
+              if [[ -z "$zip_file" ]]; then
+                echo "ZIP $variant tidak ditemukan. Pola: $pattern" >&2
+                exit 1
+              fi
+
+              echo "Memakai source $variant: $zip_file"
+              rm -rf "$workdir"
+              mkdir -p "$workdir"
+              unzip -q "$zip_file" -d "$workdir"
+
+              local project_file
+              project_file="$(find "$workdir" -type f \( -name settings.gradle -o -name settings.gradle.kts \) | head -n 1)"
+              if [[ -z "$project_file" ]]; then
+                echo "settings.gradle tidak ditemukan di $zip_file" >&2
+                exit 1
+              fi
+
+              local project_dir
+              project_dir="$(dirname "$project_file")"
+              cd "$project_dir"
+
+              if [[ ! -f "$script" ]]; then
+                echo "$script tidak ditemukan di $project_dir" >&2
+                exit 1
+              fi
+
+              chmod +x "$script"
+              "./$script"
+
+              local apk_file
+              apk_file="$(find . -maxdepth 2 -type f -name 'ice_v*.apk' -printf '%p\n' | sort -V | tail -n 1)"
+              if [[ -z "$apk_file" || ! -f "$apk_file" ]]; then
+                echo "APK $variant tidak ditemukan" >&2
+                exit 1
+              fi
+
+              cp "$apk_file" /tmp/ice-artifacts/
+              echo "Berhasil: $(basename "$apk_file")"
+              cd "$CIRCLE_WORKING_DIRECTORY"
+            }
+
+            build_variant \
+              admin \
+              'ice_v*_admin_v31_2_1*.zip' \
+              build_admin.sh
+
+            build_variant \
+              user \
+              'ice_v*_user_v31_2_1*.zip' \
+              build_user.sh
+
+            echo "APK hasil build:"
+            ls -lh /tmp/ice-artifacts/*.apk
+            test "$(find /tmp/ice-artifacts -maxdepth 1 -type f -name '*.apk' | wc -l)" -ge 2
+
+      - save_cache:
+          key: ice-gradle-v31-2-1-{{ arch }}-{{ epoch }}
+          paths:
+            - /home/circleci/.gradle/caches
+            - /home/circleci/.gradle/wrapper
+
+      - store_artifacts:
+          path: /tmp/ice-artifacts
+          destination: ICE-v31.2.1-Admin-User
+
+workflows:
+  build-ice:
+    jobs:
+      - build-ice-admin-user
