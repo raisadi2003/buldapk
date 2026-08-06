@@ -1,0 +1,128 @@
+name: Build ICE v2.8.9.1 v31.2.1 Admin dan User
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    name: Build ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: admin
+            label: ICE Admin
+            zip_pattern: ice_v*_admin_v31_2_1*.zip
+            build_script: build_admin.sh
+            artifact_name: ICE-Admin-v2891-v31.2.1
+          - variant: user
+            label: ICE User
+            zip_pattern: ice_v*_user_v31_2_1*.zip
+            build_script: build_user.sh
+            artifact_name: ICE-User-v2891-v31.2.1
+
+    steps:
+      - name: Ambil repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Pilih dan ekstrak ZIP secara otomatis
+        shell: bash
+        env:
+          ZIP_PATTERN: ${{ matrix.zip_pattern }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          ZIP_FILE="$(find . -maxdepth 1 -type f -iname "$ZIP_PATTERN" -printf '%f\n' | sort -V | tail -n 1)"
+          if [[ -z "$ZIP_FILE" ]]; then
+            echo "ZIP $VARIANT tidak ditemukan. Pola: $ZIP_PATTERN" >&2
+            exit 1
+          fi
+
+          echo "Memakai source: $ZIP_FILE"
+          DEST="$GITHUB_WORKSPACE/source-$VARIANT"
+          rm -rf "$DEST"
+          mkdir -p "$DEST"
+          unzip -q "$ZIP_FILE" -d "$DEST"
+
+          PROJECT_FILE="$(find "$DEST" -type f \( -name settings.gradle -o -name settings.gradle.kts \) | head -n 1)"
+          if [[ -z "$PROJECT_FILE" ]]; then
+            echo "settings.gradle tidak ditemukan di dalam $ZIP_FILE" >&2
+            exit 1
+          fi
+
+          PROJECT_DIR="$(dirname "$PROJECT_FILE")"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "SOURCE_ZIP=$ZIP_FILE" >> "$GITHUB_ENV"
+
+      - name: Build dan sign APK
+        shell: bash
+        env:
+          BUILD_SCRIPT: ${{ matrix.build_script }}
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          if [[ ! -f "$BUILD_SCRIPT" ]]; then
+            echo "$BUILD_SCRIPT tidak ditemukan di $PROJECT_DIR" >&2
+            exit 1
+          fi
+          chmod +x "$BUILD_SCRIPT"
+          "./$BUILD_SCRIPT"
+
+          mkdir -p "$GITHUB_WORKSPACE/out-${{ matrix.variant }}"
+          APK_FILE="$(find . -maxdepth 2 -type f -name 'ice_v*.apk' -printf '%p\n' | sort -V | tail -n 1)"
+          if [[ -z "$APK_FILE" || ! -f "$APK_FILE" ]]; then
+            echo "APK hasil build tidak ditemukan" >&2
+            exit 1
+          fi
+          cp "$APK_FILE" "$GITHUB_WORKSPACE/out-${{ matrix.variant }}/"
+          echo "Berhasil: $(basename "$APK_FILE") dari $SOURCE_ZIP"
+
+      - name: Upload APK ${{ matrix.label }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: out-${{ matrix.variant }}/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  gabungkan-apk:
+    name: Gabungkan Admin dan User
+    needs: build-apk
+    runs-on: ubuntu-latest
+    steps:
+      - name: Unduh kedua APK
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ICE-*-v2891-v31.2.1
+          path: hasil-apk
+          merge-multiple: true
+
+      - name: Pastikan dua APK tersedia
+        shell: bash
+        run: |
+          set -euo pipefail
+          find hasil-apk -maxdepth 1 -type f -name '*.apk' -print
+          test "$(find hasil-apk -maxdepth 1 -type f -name '*.apk' | wc -l)" -ge 2
+
+      - name: Upload paket APK Admin dan User
+        uses: actions/upload-artifact@v4
+        with:
+          name: ICE-v2891-v31.2.1-Admin-User-APKs
+          path: hasil-apk/*.apk
+          if-no-files-found: error
+          retention-days: 30
