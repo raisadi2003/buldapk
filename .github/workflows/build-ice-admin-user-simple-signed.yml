@@ -1,0 +1,61 @@
+name: Build ICE Admin + User Signed
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Admin
+            zip: ICE_Admin_v1.1_signed_ready.zip
+            out: ICE_admin_v1.1.apk
+          - name: User
+            zip: ICE_User_v1.1_signed_ready.zip
+            out: ICE_user_v1.1.apk
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Extract source
+        run: |
+          mkdir src
+          unzip -q "${{ matrix.zip }}" -d src
+
+      - name: Build signed APK
+        working-directory: src
+        run: |
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            ./gradlew --no-daemon clean assembleRelease
+          else
+            gradle --no-daemon clean assembleRelease
+          fi
+
+      - name: Prepare output
+        run: |
+          mkdir out
+          APK="$(find src/app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          cp "$APK" "out/${{ matrix.out }}"
+
+      - name: Upload ${{ matrix.name }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ICE-${{ matrix.name }}-Signed
+          path: out/*.apk
+          if-no-files-found: error
